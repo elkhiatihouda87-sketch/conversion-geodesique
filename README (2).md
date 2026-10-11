@@ -61,16 +61,21 @@ X = 5154840.9401 m, Y = -526700.3405 m, Z = 3706599.3368 m.
 
 **Fenêtre complète : conversion à gauche, globe à droite**
 
-![Fenêtre principale](interface-complete.png)
+<p align="center">
+  <img src="interface-complete.png" alt="Fenêtre principale" width="600">
+</p>
 
 **Vue « Schéma géodésique » : normale, angles φ et λ, hauteur h, axes X Y Z**
 
-![Schéma géodésique](interface-schema.png)
+<p align="center">
+  <img src="interface-schema.png" alt="Schéma géodésique" width="600">
+</p>
 
 **Vue « Terre » : globe coloré avec les points convertis**
 
-![Vue Terre](interface-terre.png)
-
+<p align="center">
+  <img src="interface-terre.png" alt="Vue Terre" width="600">
+</p>
 ## Les principes du calcul
 
 ### 1. L'ellipsoïde
