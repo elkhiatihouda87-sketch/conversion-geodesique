@@ -16,12 +16,14 @@ Chaque point converti est dessiné sur un schéma 3D et sur un globe qu'on fait 
 # Les modules utilisés :
 #   math = les maths (sin, cos...) ; random = hasard (étoiles, rotation de départ) ;
 #   re = lire les angles tapés en degrés-minutes-secondes ; sys = lire le thème donné au lancement ;
-#   time = faire « battre » les points ; tkinter = la fenêtre et le dessin.
+#   time = faire « battre » les points ; tkinter = la fenêtre et le dessin ;
+#   unittest = les tests qui vérifient les calculs (voir la partie 5, en bas du fichier).
 import math
 import random
 import re
 import sys
 import time
+import unittest
 import tkinter as tk
 from tkinter import ttk
 
@@ -933,6 +935,168 @@ class App(tk.Tk):
         self.after(33, self.tick)
 
 
-# On lance le programme quand on exécute ce fichier.
+# ====================================================================== 5. LES TESTS
+# Cette partie contient les tests unitaires du programme. Ils vérifient que les fonctions de
+# calcul (partie 1) 
+#
+# Données de référence : le point Merchich, sur l'ellipsoïde Clarke 1880.
+#     Latitude  φ = 33°26'59".672 Nord
+#     Longitude λ =  7°33'27".295 Ouest
+#     Hauteur   h = 243.419 m au sol, 243.730 m au sommet du pilier
+# Les valeurs de h et des angles viennent du cours. Les coordonnées cartésiennes (X, Y, Z)
+# ci-dessous ont été obtenues en appliquant la conversion directe à ces valeurs.
+A_MER, B_MER = ELLIPSOIDES["Clarke 1880 (Merchich)"]
+E2_MER = e2_of(A_MER, B_MER)
+
+# Angles du point Merchich en degrés décimaux. La longitude est négative car elle est à l'ouest.
+PHI_MER_DEG = 33 + 26 / 60 + 59.672 / 3600
+LAM_MER_DEG = -(7 + 33 / 60 + 27.295 / 3600)
+
+# Hauteurs ellipsoïdales du point, en mètres.
+H_SOL, H_PILIER = 243.419, 243.730
+
+# Coordonnées cartésiennes de référence (X, Y, Z), en mètres.
+XYZ_SOL = (5281240.0238, -700688.7667, 3495569.8454)
+XYZ_PILIER = (5281240.2810, -700688.8009, 3495570.0169)
+
+# Tolérances d'écart acceptées entre la valeur calculée et la valeur de référence :
+#   - 0,1 mm sur X, Y, Z et sur h (1e-4 m) ;
+#   - 1e-9 degré sur les angles, ce qui représente environ 0,1 mm à la surface de la Terre.
+TOL_XYZ, TOL_H, TOL_ANGLE = 1e-4, 1e-4, 1e-9
+
+
+class TestPointMerchich(unittest.TestCase):
+    """Validation des conversions à partir des coordonnées du point Merchich."""
+
+    def setUp(self):
+        # Les fonctions de calcul travaillent en radians : on convertit une seule fois ici.
+        self.phi, self.lam = math.radians(PHI_MER_DEG), math.radians(LAM_MER_DEG)
+
+    def test_geo_vers_xyz(self):
+        """Conversion (φ, λ, h) → (X, Y, Z) : on doit retrouver les coordonnées de référence."""
+        for h, ref in ((H_SOL, XYZ_SOL), (H_PILIER, XYZ_PILIER)):
+            calc = geo_to_cart(self.phi, self.lam, h, A_MER, B_MER)
+            for c, r in zip(calc, ref):
+                self.assertAlmostEqual(c, r, delta=TOL_XYZ)
+
+    def test_xyz_vers_geo(self):
+        """Conversion (X, Y, Z) → (φ, λ, h), avec chacune des deux méthodes : on doit retrouver φ, λ et h."""
+        for methode in (cart_to_geo_directe, cart_to_geo_iterative):
+            for h, xyz in ((H_SOL, XYZ_SOL), (H_PILIER, XYZ_PILIER)):
+                # subTest indique précisément quelle méthode et quelle hauteur échouent, le cas échéant.
+                with self.subTest(methode=methode.__name__, h=h):
+                    phi, lam, hh = methode(*xyz, A_MER, B_MER)
+                    self.assertAlmostEqual(math.degrees(phi), PHI_MER_DEG, delta=TOL_ANGLE)
+                    self.assertAlmostEqual(math.degrees(lam), LAM_MER_DEG, delta=TOL_ANGLE)
+                    self.assertAlmostEqual(hh, h, delta=TOL_H)
+
+    def test_aller_retour(self):
+        """Un aller-retour (φ, λ, h) → (X, Y, Z) → (φ, λ, h) doit redonner les valeurs de départ.
+
+        Ce test ne dépend pas des valeurs de référence X, Y, Z : il contrôle uniquement que
+        les deux conversions sont cohérentes entre elles.
+        """
+        for h in (H_SOL, H_PILIER):
+            xyz = geo_to_cart(self.phi, self.lam, h, A_MER, B_MER)
+            for methode in (cart_to_geo_directe, cart_to_geo_iterative):
+                phi, lam, hh = methode(*xyz, A_MER, B_MER)
+                self.assertAlmostEqual(math.degrees(phi), PHI_MER_DEG, delta=TOL_ANGLE)
+                self.assertAlmostEqual(math.degrees(lam), LAM_MER_DEG, delta=TOL_ANGLE)
+                self.assertAlmostEqual(hh, h, delta=TOL_H)
+
+    def test_deux_formules_de_h(self):
+        """Les deux formules de la hauteur vues en cours doivent donner le même résultat :
+
+            h = √(X² + Y²) / cos φ − N
+            h = Z / sin φ − N · (1 − e²)
+        """
+        N = N_of(self.phi, A_MER, E2_MER)
+        for h in (H_SOL, H_PILIER):
+            X, Y, Z = geo_to_cart(self.phi, self.lam, h, A_MER, B_MER)
+            self.assertAlmostEqual(math.hypot(X, Y) / math.cos(self.phi) - N, h, delta=TOL_H)
+            self.assertAlmostEqual(Z / math.sin(self.phi) - N * (1 - E2_MER), h, delta=TOL_H)
+
+    def test_ecart_pilier_sol(self):
+        """Le sommet du pilier est 0,311 m plus haut que le sol, mesuré le long de la verticale."""
+        p1 = geo_to_cart(self.phi, self.lam, H_SOL, A_MER, B_MER)
+        p2 = geo_to_cart(self.phi, self.lam, H_PILIER, A_MER, B_MER)
+        self.assertAlmostEqual(math.dist(p1, p2), H_PILIER - H_SOL, delta=1e-6)
+
+    def test_methodes_concordent(self):
+        """La méthode directe et la méthode itérative doivent donner le même résultat."""
+        xyz = geo_to_cart(self.phi, self.lam, H_SOL, A_MER, B_MER)
+        d = cart_to_geo_directe(*xyz, A_MER, B_MER)
+        i = cart_to_geo_iterative(*xyz, A_MER, B_MER)
+        self.assertAlmostEqual(d[0], i[0], delta=1e-12)
+        self.assertAlmostEqual(d[1], i[1], delta=1e-12)
+        self.assertAlmostEqual(d[2], i[2], delta=1e-6)
+
+
+class TestSaisieAngles(unittest.TestCase):
+    """Lecture et affichage des angles (fonctions parse_angle et dms)."""
+
+    def test_latitude_dms(self):
+        """La latitude du point Merchich, saisie en degrés-minutes-secondes, est lue correctement."""
+        self.assertAlmostEqual(parse_angle("33 26 59.672 N"), PHI_MER_DEG, delta=1e-12)
+
+    def test_longitude_dms_ouest(self):
+        """La lettre W (ou O en français) rend l'angle négatif, avec ou sans symboles °, ' et \"."""
+        self.assertAlmostEqual(parse_angle("7 33 27.295 W"), LAM_MER_DEG, delta=1e-12)
+        self.assertAlmostEqual(parse_angle("7°33'27.295\"O"), LAM_MER_DEG, delta=1e-12)
+
+    def test_decimal_virgule_et_sud(self):
+        """La virgule décimale est acceptée, et la lettre S donne un angle négatif."""
+        self.assertAlmostEqual(parse_angle("35,7595"), 35.7595, delta=1e-12)
+        self.assertLess(parse_angle("10 S"), 0)
+
+    def test_angle_illisible(self):
+        """Un texte qui n'est pas un angle doit provoquer une erreur claire (ValueError)."""
+        with self.assertRaises(ValueError):
+            parse_angle("abc")
+
+    def test_dms_affichage_et_inverse(self):
+        """dms() écrit bien l'angle en degrés-minutes-secondes, et parse_angle() fait l'opération inverse."""
+        self.assertEqual(dms(PHI_MER_DEG), "33° 26' 59.672\"")
+        for x in (PHI_MER_DEG, LAM_MER_DEG, 0.5, -12.3456789):
+            self.assertAlmostEqual(parse_angle(dms(x)), x, delta=1e-6)
+
+
+class TestCasGeneraux(unittest.TestCase):
+    """Vérifications sur d'autres points et d'autres ellipsoïdes que Merchich."""
+
+    def test_aller_retour_plusieurs_points(self):
+        """Aller-retour sur des points variés (hémisphères nord et sud, longitudes est et ouest,
+        hauteurs de 0 à 5000 m) et sur les quatre ellipsoïdes proposés par le programme."""
+        points = [(0, 0, 0), (45, 90, 1000), (-33.9, 151.2, 58), (35.7595, -5.834, 50),
+                  (80, -170, 0), (-60, 20, 5000)]
+        for nom, (a, b) in ELLIPSOIDES.items():
+            for lat, lon, h in points:
+                xyz = geo_to_cart(math.radians(lat), math.radians(lon), h, a, b)
+                for methode in (cart_to_geo_directe, cart_to_geo_iterative):
+                    with self.subTest(ellipsoide=nom, lat=lat, lon=lon, h=h, m=methode.__name__):
+                        phi, lam, hh = methode(*xyz, a, b)
+                        self.assertAlmostEqual(math.degrees(phi), lat, delta=1e-8)
+                        self.assertAlmostEqual(math.degrees(lam), lon, delta=1e-8)
+                        self.assertAlmostEqual(hh, h, delta=1e-3)
+
+    def test_equateur_et_pole(self):
+        """Cas limites connus : à l'équateur X vaut a, et au pôle nord Z vaut b."""
+        X, Y, Z = geo_to_cart(0, 0, 0, A_MER, B_MER)
+        self.assertAlmostEqual(X, A_MER, delta=1e-6)
+        self.assertAlmostEqual(Y, 0, delta=1e-6)
+        self.assertAlmostEqual(Z, 0, delta=1e-6)
+        self.assertAlmostEqual(geo_to_cart(math.pi / 2, 0, 0, A_MER, B_MER)[2], B_MER, delta=1e-3)
+
+    def test_excentricite_clarke(self):
+        """Le carré de l'excentricité de Clarke 1880 vaut environ 0,0068034."""
+        self.assertAlmostEqual(E2_MER, 0.0068034, places=6)
+
+
+# ====================================================================== LANCEMENT
+
 if __name__ == "__main__":
-    App().mainloop()
+    if len(sys.argv) > 1 and sys.argv[1] == "test":
+        # exit=False : à la fin des tests, on ne ferme pas la console (utile dans Spyder ou Jupyter).
+        unittest.main(argv=[sys.argv[0], "-v"], exit=False)
+    else:
+        App().mainloop()
