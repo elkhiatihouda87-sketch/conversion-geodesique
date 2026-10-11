@@ -12,13 +12,6 @@ Petit programme Python (tkinter) qui convertit une position entre deux écriture
 
 Chaque conversion ajoute un point sur le globe, qu'on peut faire tourner à la souris.
 
-## Lancer le programme
-
-Il faut Python 3 avec tkinter (inclus dans l'installation standard sur Windows et macOS).
-
-```bash
-python conversion_geodesique.py            # thème par défaut (clair)
-python conversion_geodesique.py sombre     # autres thèmes : clair, sombre, foret, violet, chaud
 ```
 
 ## Utilisation
@@ -143,8 +136,3 @@ Le fichier `conversion_geodesique.py` est commenté pas à pas et se lit de haut
 | 3. Les couleurs | thèmes, `blend`, couleurs des continents et de l'océan |
 | 4. La fenêtre | classe `App` : interface, logique (`to_xyz`, `to_geo`), dessin (`draw_schema`, `draw_terre`), animation (`tick`) |
 
-## Limites
-
-- Les contours des continents sont dessinés à la main et très approximatifs : ils servent à se repérer, pas à mesurer.
-- Les ellipsoïdes fournis sont ceux de la liste du programme ; pour un autre, utiliser « Personnalisé ».
-- Le programme ne change pas de système de coordonnées (par exemple de Merchich vers WGS 84) : il convertit seulement entre deux écritures du même système.
